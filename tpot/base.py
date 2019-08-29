@@ -103,7 +103,6 @@ if sys.platform.startswith('win'):
     win32api.SetConsoleCtrlHandler(handler, 1)
 
 
-
 class TPOTBase(BaseEstimator):
     """Automatically creates and optimizes machine learning pipelines using GP."""
 
@@ -114,7 +113,8 @@ class TPOTBase(BaseEstimator):
                  random_state=None, config_dict=None, template=None,
                  warm_start=False, memory=None, use_dask=False,
                  periodic_checkpoint_folder=None, early_stop=None,
-                 verbosity=0, disable_update_check=False):
+                 verbosity=0, disable_update_check=False,
+                 stats=None, custom_checkpoint=None):
         """Set up the genetic programming algorithm for pipeline optimization.
 
         Parameters
@@ -277,10 +277,10 @@ class TPOTBase(BaseEstimator):
         self.generations = generations
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
-        self.scoring=scoring
+        self.scoring = scoring
         self.cv = cv
         self.subsample = subsample
-        self.n_jobs=n_jobs
+        self.n_jobs = n_jobs
         self.max_time_mins = max_time_mins
         self.max_eval_time_mins = max_eval_time_mins
         self.periodic_checkpoint_folder = periodic_checkpoint_folder
@@ -293,7 +293,8 @@ class TPOTBase(BaseEstimator):
         self.verbosity = verbosity
         self.disable_update_check = disable_update_check
         self.random_state = random_state
-
+        self.stats = stats
+        self.custom_checkpoint = custom_checkpoint
 
     def _setup_template(self, template):
         self.template = template
@@ -749,7 +750,8 @@ class TPOTBase(BaseEstimator):
                     pbar=self._pbar,
                     halloffame=self._pareto_front,
                     verbose=self.verbosity,
-                    per_generation_function=self._check_periodic_pipeline
+                    per_generation_function=self._check_periodic_pipeline,
+                    stats=self.stats,
                 )
 
             # store population for the next call
@@ -783,7 +785,6 @@ class TPOTBase(BaseEstimator):
                     if attempt == (attempts - 1):
                         raise e
             return self
-
 
     def _setup_memory(self):
         """Setup Memory object for memory caching.
@@ -1042,6 +1043,9 @@ class TPOTBase(BaseEstimator):
             if total_since_last_pipeline_save > self._output_best_pipeline_period_seconds:
                 self._last_pipeline_write = datetime.now()
                 self._save_periodic_pipeline(gen)
+
+        if self.custom_checkpoint and callable(self.custom_checkpoint):
+            self.custom_checkpoint(gen, self)
 
         if self.early_stop is not None:
             if self._last_optimized_pareto_front_n_gens >= self.early_stop:
