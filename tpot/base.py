@@ -114,7 +114,7 @@ class TPOTBase(BaseEstimator):
                  warm_start=False, memory=None, use_dask=False,
                  periodic_checkpoint_folder=None, early_stop=None,
                  verbosity=0, disable_update_check=False,
-                 stats=None, custom_checkpoint=None):
+                 custom_checkpoint=None):
         """Set up the genetic programming algorithm for pipeline optimization.
 
         Parameters
@@ -293,7 +293,6 @@ class TPOTBase(BaseEstimator):
         self.verbosity = verbosity
         self.disable_update_check = disable_update_check
         self.random_state = random_state
-        self.stats = stats
         self.custom_checkpoint = custom_checkpoint
 
     def _setup_template(self, template):
@@ -751,7 +750,7 @@ class TPOTBase(BaseEstimator):
                     halloffame=self._pareto_front,
                     verbose=self.verbosity,
                     per_generation_function=self._check_periodic_pipeline,
-                    stats=self.stats,
+                    custom_checkpoint=self.custom_checkpoint,
                 )
 
             # store population for the next call
@@ -1045,7 +1044,7 @@ class TPOTBase(BaseEstimator):
                 self._save_periodic_pipeline(gen)
 
         if self.custom_checkpoint and callable(self.custom_checkpoint):
-            self.custom_checkpoint(gen, self)
+            self.custom_checkpoint(self, generation=gen)
 
         if self.early_stop is not None:
             if self._last_optimized_pareto_front_n_gens >= self.early_stop:
@@ -1345,9 +1344,10 @@ class TPOTBase(BaseEstimator):
         try:
             # Don't use parallelization if n_jobs==1
             if self._n_jobs == 1 and not self.use_dask:
-                for sklearn_pipeline in sklearn_pipeline_list:
+                for ind_str, sklearn_pipeline in zip(eval_individuals_str, sklearn_pipeline_list):
                     self._stop_by_max_time_mins()
                     val = partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
+                    self.custom_checkpoint.update_pipeline_score(ind_str, val)
                     result_score_list = self._update_val(val, result_score_list)
             else:
                 # chunk size for pbar update
@@ -1372,13 +1372,13 @@ class TPOTBase(BaseEstimator):
                             tmp_result_scores = list(dask.compute(*tmp_result_scores))
 
                     else:
-
                         parallel = Parallel(n_jobs=self._n_jobs, verbose=0, pre_dispatch='2*n_jobs')
                         tmp_result_scores = parallel(
                             delayed(partial_wrapped_cross_val_score)(sklearn_pipeline=sklearn_pipeline)
                             for sklearn_pipeline in sklearn_pipeline_list[chunk_idx:chunk_idx + chunk_size])
                     # update pbar
-                    for val in tmp_result_scores:
+                    for ind_str, val in zip(eval_individuals_str, tmp_result_scores):
+                        self.custom_checkpoint.update_pipeline_score(ind_str, val)
                         result_score_list = self._update_val(val, result_score_list)
 
         except (KeyboardInterrupt, SystemExit, StopIteration) as e:
@@ -1524,6 +1524,11 @@ class TPOTBase(BaseEstimator):
                 self.evaluated_individuals_[individual_str] = self._combine_individual_stats(operator_counts[individual_str],
                                                                                              result_score,
                                                                                              stats_dicts[individual_str])
+                if self.custom_checkpoint and callable(self.custom_checkpoint):
+                    self.custom_checkpoint(
+                        self,
+                        individual_str=individual_str,
+                        individual_stat=self.evaluated_individuals_[individual_str])
             else:
                 raise ValueError('Scoring function does not return a float.')
 

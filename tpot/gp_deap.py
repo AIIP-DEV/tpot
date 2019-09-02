@@ -172,7 +172,7 @@ def initialize_stats_dict(individual):
 
 
 def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
-                   stats=None, halloffame=None, verbose=0, per_generation_function=None):
+                   stats=None, halloffame=None, verbose=0, per_generation_function=None, custom_checkpoint=None):
     """This is the :math:`(\mu + \lambda)` evolutionary algorithm.
     :param population: A list of individuals.
     :param toolbox: A :class:`~deap.base.Toolbox` that contains the evolution
@@ -224,6 +224,7 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
     for ind in population:
         initialize_stats_dict(ind)
 
+    custom_checkpoint.setup(0, population)
     population = toolbox.evaluate(population)
 
     record = stats.compile(population) if stats is not None else {}
@@ -236,7 +237,7 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
             per_generation_function(gen)
         # Vary the population
         offspring = varOr(population, toolbox, lambda_, cxpb, mutpb)
-
+        custom_checkpoint.mutation(gen, offspring)
 
         # Update generation statistic for all individuals which have invalid 'generation' stats
         # This hold for individuals that have been altered in the varOr function
@@ -251,6 +252,7 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
 
         # Select the next generation population
         population[:] = toolbox.select(population + offspring, mu)
+        custom_checkpoint.select(gen, population)
 
         # pbar process
         if not pbar.disable:
