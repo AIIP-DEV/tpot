@@ -294,6 +294,7 @@ class TPOTBase(BaseEstimator):
         self.disable_update_check = disable_update_check
         self.random_state = random_state
         self.custom_checkpoint = custom_checkpoint
+        self.custom_checkpoint.set_obj(self)
 
     def _setup_template(self, template):
         self.template = template
@@ -1344,10 +1345,10 @@ class TPOTBase(BaseEstimator):
         try:
             # Don't use parallelization if n_jobs==1
             if self._n_jobs == 1 and not self.use_dask:
-                for ind_str, sklearn_pipeline in zip(eval_individuals_str, sklearn_pipeline_list):
+                for ind_str, sklearn_pipeline, ind in zip(eval_individuals_str, sklearn_pipeline_list, individuals):
                     self._stop_by_max_time_mins()
                     val = partial_wrapped_cross_val_score(sklearn_pipeline=sklearn_pipeline)
-                    self.custom_checkpoint.update_pipeline_score(ind_str, val)
+                    self.custom_checkpoint.update_pipeline_score(ind_str, val, sklearn_pipeline, ind)
                     result_score_list = self._update_val(val, result_score_list)
             else:
                 # chunk size for pbar update
@@ -1377,8 +1378,12 @@ class TPOTBase(BaseEstimator):
                             delayed(partial_wrapped_cross_val_score)(sklearn_pipeline=sklearn_pipeline)
                             for sklearn_pipeline in sklearn_pipeline_list[chunk_idx:chunk_idx + chunk_size])
                     # update pbar
-                    for ind_str, val in zip(eval_individuals_str, tmp_result_scores):
-                        self.custom_checkpoint.update_pipeline_score(ind_str, val)
+                    for ind_str, val, sklearn_pipeline, ind in zip(
+                            eval_individuals_str[chunk_idx:chunk_idx + chunk_size],
+                            tmp_result_scores,
+                            sklearn_pipeline_list[chunk_idx:chunk_idx + chunk_size],
+                            individuals[chunk_idx:chunk_idx + chunk_size]):
+                        self.custom_checkpoint.update_pipeline_score(ind_str, val, sklearn_pipeline, ind)
                         result_score_list = self._update_val(val, result_score_list)
 
         except (KeyboardInterrupt, SystemExit, StopIteration) as e:
