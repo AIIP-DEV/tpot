@@ -28,7 +28,7 @@ from deap import tools, gp
 from inspect import isclass
 from .operator_utils import set_sample_weight
 from sklearn.utils import indexable
-from sklearn.metrics.scorer import check_scoring
+from sklearn.metrics import check_scoring
 from sklearn.model_selection._validation import _fit_and_score
 from sklearn.model_selection._split import check_cv
 
@@ -225,7 +225,7 @@ def eaMuPlusLambda(population, toolbox, mu, lambda_, cxpb, mutpb, ngen, pbar,
         initialize_stats_dict(ind)
 
     custom_checkpoint.setup(0, population)
-    population = toolbox.evaluate(population)
+    population[:] = toolbox.evaluate(population)
 
     record = stats.compile(population) if stats is not None else {}
     logbook.record(gen=0, nevals=len(population), **record)
@@ -424,8 +424,8 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
             import dask_ml.model_selection  # noqa
             import dask  # noqa
             from dask.delayed import Delayed
-        except ImportError:
-            msg = "'use_dask' requires the optional dask and dask-ml depedencies."
+        except Exception as e:
+            msg = "'use_dask' requires the optional dask and dask-ml depedencies.\n{}".format(e)
             raise ImportError(msg)
 
         dsk, keys, n_splits = dask_ml.model_selection._search.build_graph(
@@ -458,10 +458,11 @@ def _wrapped_cross_val_score(sklearn_pipeline, features, target,
                                          test=test,
                                          verbose=0,
                                          parameters=None,
+                                         error_score='raise',
                                          fit_params=sample_weight_dict)
                                     for train, test in cv_iter]
-                CV_score = np.array(scores)[:, 0]
-                return np.nanmean(CV_score)
+            CV_score = np.array(scores)[:, 0]
+            return np.nanmean(CV_score)
         except TimeoutException:
             return "Timeout"
         except Exception as e:
